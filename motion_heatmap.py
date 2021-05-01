@@ -1,16 +1,19 @@
 import copy
+import datetime
+import time
 
 import cv2
 import numpy as np
 
 
-class HeatMap(object):
+class HeatMapProcessor(object):
 
-    def __init__(self, input_file) -> None:
+    def __init__(self, input_file, logger=None) -> None:
         super().__init__()
         self.capture = cv2.VideoCapture(input_file)
         self.background_subtractor = cv2.bgsegm.createBackgroundSubtractorMOG()
         self.length = int(self.capture.get(cv2.CAP_PROP_FRAME_COUNT))
+        self.logger = logger
 
         self.ref_frame = None
         self.video_frames = []
@@ -29,9 +32,15 @@ class HeatMap(object):
 
         threshold = 2
         maxValue = 5
-
+        start = round(time.time() * 1000)
         for i in range(0, self.length - 1):
 
+            if (i + 1) % 10 == 0:
+                avg_frame_time = ((round(time.time() * 1000) - start) / i)
+                to_go = self.length - i
+                eta = datetime.datetime.now() + datetime.timedelta(milliseconds=round(to_go * avg_frame_time))
+
+                self.logger(f'frame[{i + 1}] {round(i / self.length * 100)}% done. eta : {eta}')
             ret, frame = self.capture.read()
 
             filter = self.background_subtractor.apply(frame)  # remove the background

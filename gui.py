@@ -4,7 +4,7 @@ from datetime import datetime
 from pathlib import Path
 from tkinter.scrolledtext import ScrolledText
 
-from motion_heatmap import HeatMap
+from motion_heatmap import HeatMapProcessor
 
 
 class Application(tk.Frame):
@@ -46,7 +46,7 @@ class Application(tk.Frame):
         file = tk.filedialog.askopenfile(mode="r")
         path = file.name
         name = Path(path).name
-        self.heatmap = HeatMap(path)
+        self.heatmap = HeatMapProcessor(input_file=path, logger=self.log)
         self.log(f'Loaded {name} ({self.heatmap.length} frames)')
         self.open_file_button['text'] = name
 
