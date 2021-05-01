@@ -13,4 +13,15 @@ Make also sure to have installed the MOG background subtractor by running:
 
 `pip install opencv-contrib-python`
 
-# Enjoy!
+to make an executable you'd need pyinstaller
+`pip install pyinstaller`
+
+
+# create exe
+`pyinstaller --onefile gui.spec`
+
+# todo list
+- customize max_value for color intensity
+- specify a custom reference image
+- error handling
+- threading

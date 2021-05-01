@@ -1,68 +1,78 @@
-import numpy as np
-import cv2
 import copy
-from make_video import make_video
-from progress.bar import Bar
+
+import cv2
+import numpy as np
 
 
-def main():
-    capture = cv2.VideoCapture('input.mp4')
-    background_subtractor = cv2.bgsegm.createBackgroundSubtractorMOG()
-    length = int(capture.get(cv2.CAP_PROP_FRAME_COUNT))
+class HeatMap(object):
 
-    bar = Bar('Processing Frames', max=length)
+    def __init__(self, input_file) -> None:
+        super().__init__()
+        self.capture = cv2.VideoCapture(input_file)
+        self.background_subtractor = cv2.bgsegm.createBackgroundSubtractorMOG()
+        self.length = int(self.capture.get(cv2.CAP_PROP_FRAME_COUNT))
 
-    first_iteration_indicator = 1
-    for i in range(0, length):
+        self.ref_frame = None
+        self.video_frames = []
+        self.accumulated_img = None
 
-        ret, frame = capture.read()
+    def get_reference_frame(self):
+        # todo: allow to input a custom reference frame
+        _, frame = self.capture.read()
+        self.ref_frame = copy.deepcopy(frame)
+        self.accumulated_img = np.zeros(self.ref_frame.shape[:2], np.uint8)
 
-        # If first frame
-        if first_iteration_indicator == 1:
+    def iterate_frames(self):
 
-            first_frame = copy.deepcopy(frame)
-            height, width = frame.shape[:2]
-            accum_image = np.zeros((height, width), np.uint8)
-            first_iteration_indicator = 0
-        else:
+        if not self.ref_frame:
+            self.get_reference_frame()
 
-            filter = background_subtractor.apply(frame)  # remove the background
-            cv2.imwrite('./frame.jpg', frame)
-            cv2.imwrite('./diff-bkgnd-frame.jpg', filter)
+        threshold = 2
+        maxValue = 5
 
-            threshold = 2
-            maxValue = 2
+        for i in range(0, self.length - 1):
+
+            ret, frame = self.capture.read()
+
+            filter = self.background_subtractor.apply(frame)  # remove the background
+
             ret, th1 = cv2.threshold(filter, threshold, maxValue, cv2.THRESH_BINARY)
 
             # add to the accumulated image
-            accum_image = cv2.add(accum_image, th1)
-            cv2.imwrite('./mask.jpg', accum_image)
+            self.accumulated_img = cv2.add(self.accumulated_img, th1)
 
-            color_image_video = cv2.applyColorMap(accum_image, cv2.COLORMAP_SUMMER)
-
+            color_image_video = cv2.applyColorMap(self.accumulated_img, cv2.COLORMAP_SUMMER)
             video_frame = cv2.addWeighted(frame, 0.7, color_image_video, 0.7, 0)
-
-            name = "./frames/frame%d.jpg" % i
-            cv2.imwrite(name, video_frame)
+            self.video_frames.append(video_frame)
 
             if cv2.waitKey(1) & 0xFF == ord('q'):
                 break
-        bar.next()
 
-    bar.finish()
+    def make_image(self):
 
-    make_video('./frames/', './output.avi')
+        if not self.accumulated_img:
+            self.iterate_frames()
 
-    color_image = cv2.applyColorMap(accum_image, cv2.COLORMAP_HOT)
-    result_overlay = cv2.addWeighted(first_frame, 0.7, color_image, 0.7, 0)
+        color_image = cv2.applyColorMap(self.accumulated_img, cv2.COLORMAP_HOT)
+        result_overlay = cv2.addWeighted(self.ref_frame, 0.7, color_image, 0.7, 0)
 
-    # save the final heatmap
-    cv2.imwrite('diff-overlay.jpg', result_overlay)
+        # save the final heatmap
+        cv2.imwrite('heatmap-overlay.jpg', result_overlay)
 
-    # cleanup
-    capture.release()
-    cv2.destroyAllWindows()
+    def make_video(self):
 
+        if not self.video_frames:
+            self.iterate_frames()
 
-if __name__ == '__main__':
-    main()
+        images = self.video_frames
+
+        height, width, layers = self.ref_frame.shape
+        fourcc = cv2.VideoWriter_fourcc(*"MJPG")
+        video = cv2.VideoWriter('output.avi', fourcc, 30.0, (width, height))
+
+        print(f'Creating Video {len(images)}')
+
+        for image in images:
+            video.write(image)
+        cv2.destroyAllWindows()
+        video.release()
