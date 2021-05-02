@@ -5,56 +5,124 @@ from pathlib import Path
 from tkinter.scrolledtext import ScrolledText
 
 from motion_heatmap import HeatMapProcessor
+from util import *
 
 
 class Application(tk.Frame):
     def __init__(self, master=None):
         super().__init__(master)
         self.master = master
-        self.pack()
+
+        self.buttons = [OPEN_FILE, RENDER_FILE, CREATE_IMG, CREATE_VID, EXIT]
+        self.entries = [HEAT_INTENSITY, FRAME_SKIP, MAX_FRAMES]
+
+        self.label = {}
+        self.entry = {}
+        self.heatmap = None
         self.create_widgets()
+        self.pack()
 
     def create_widgets(self):
-        self.open_file_button = tk.Button(self, text="Select Video File", command=self.select_file)
-        self.open_file_button.pack(fill=tk.BOTH, side=tk.LEFT, expand=True)
+        frame = tk.Frame(self, relief=tk.RAISED, borderwidth=1)
+        frame.grid(row=0, column=0, sticky='nwes')
 
-        self.create_img = tk.Button(self, text="Generate Heatmap Image", command=self.generate_map_image)
-        self.create_img.pack(fill=tk.BOTH, side=tk.LEFT, expand=True)
+        for i, button in enumerate(self.buttons):
+            row = tk.Frame(master=frame)
+            b = tk.Button(master=row, text=button, command=self.get_command(button), width=20)
+            b.pack(side=tk.LEFT)
+            lb = tk.Label(master=row)
+            lb.pack()
+            self.label[button] = lb
+            row.grid(row=i, column=0, sticky='ew')
 
-        self.create_vid = tk.Button(self, text="Generate Heatmap Video", command=self.generate_map_video)
-        self.create_vid.pack(fill=tk.BOTH, side=tk.LEFT, expand=True)
+        frame = tk.Frame(self, relief=tk.RAISED, borderwidth=1)
+        frame.grid(row=2, column=0, columnspan=2, sticky='n')
+        self.status = tk.Label(master=frame, text=f"...")
+        self.status.pack(side=tk.TOP, )
+        self.output_text = ScrolledText(master=frame, height=5, wrap=tk.WORD)
+        self.output_text.pack(side=tk.BOTTOM)
 
-        self.quit = tk.Button(self, text="Exit", command=self.master.destroy)
-        self.quit.pack()
+        frame = tk.Frame(self, relief=tk.RAISED, borderwidth=1)
+        frame.grid(row=0, column=1, sticky='nwes')
+        for i, entry in enumerate(self.entries):
+            row = tk.Frame(master=frame)
+            lb = tk.Label(master=row, text=entry, width=15, )
+            lb.pack(side=tk.LEFT, anchor="w")
+            e = tk.Entry(master=row, width=20)
+            e.pack()
+            self.entry[entry] = e
+            row.grid(row=i, column=0, sticky='ew')
 
-        self.output_text = ScrolledText(height=5, wrap=tk.WORD)
-        self.output_text.pack()
+    def get_command(self, event):
+        if event == OPEN_FILE:
+            return self.select_file
+        elif event == EXIT:
+            return self.master.destroy
+        elif event == CREATE_IMG:
+            return self.generate_map_image
+        elif event == CREATE_VID:
+            return self.generate_map_video
+        elif event == RENDER_FILE:
+            return self.render_file
+        else:
+            return lambda: self.log(f"{event} not implemented")
 
     def generate_map_image(self):
-        self.log('starting img generation')
-        # todo: threading.Thread(target=self.heatmap.make_image)
-        self.heatmap.make_image()
-        self.log('img generation done')
+        if self.heatmap:
+            # todo: threading.Thread(target=self.heatmap.make_image)
+            self.heatmap.make_image()
+            self.log('img generation done')
+        else:
+            self.log("Can't generate, no input file loaded.")
 
     def generate_map_video(self):
-        self.log('starting vid generation')
-        # todo: threading.Thread(target=self.heatmap.make_video)
-        self.heatmap.make_video()
-        self.log('vid generation done')
+        if self.heatmap:
+            self.log('starting vid generation')
+            # todo: threading.Thread(target=self.heatmap.make_video)
+            self.heatmap.make_video()
+            self.log('vid generation done')
+        else:
+            self.log("Can't generate, no input file loaded.")
 
     def select_file(self):
         file = tk.filedialog.askopenfile(mode="r")
-        path = file.name
-        name = Path(path).name
-        self.heatmap = HeatMapProcessor(input_file=path, logger=self.log)
-        self.log(f'Loaded {name} ({self.heatmap.length} frames)')
-        self.open_file_button['text'] = name
+        if file:
+            path = file.name
+            name = Path(path).name
+            self.heatmap = HeatMapProcessor(input_file=path, entries=self.entry, logger=self.log)
+            height, width, _ = self.heatmap.ref_frame.shape
+            length = self.heatmap.length
+            self.label[OPEN_FILE]['text'] = f"File: {name}, Frames: {length}, Dim: {width}x{height}"
+            self.log(f'Loaded {name} ({self.heatmap.length} frames)')
+        else:
+            self.log(f'No file selected')
 
-    def log(self, text):
-        now = datetime.now().strftime("%H:%M:%S")
-        self.output_text.insert(tk.INSERT, f'[{now}] {text} \n')
-        self.output_text.see(tk.END)
-        self.output_text.update()
+    def render_file(self):
+        if self.heatmap:
+            ''.isnumeric()
+            max_val = self.entry[HEAT_INTENSITY].get()
+            if max_val.isnumeric():
+                self.heatmap.max_value = int(max_val)
+            step_size = self.entry[FRAME_SKIP].get()
+            if step_size.isnumeric():
+                self.heatmap.step_size = int(step_size) + 1
+            max_frames = self.entry[MAX_FRAMES].get()
+            if max_frames.isnumeric():
+                self.heatmap.max_frames = int(max_frames)
+
+            self.heatmap.iterate_frames()
+        else:
+            self.log('No file selected.')
+
+    def log(self, text, status_only=False):
+        if not status_only:
+            now = datetime.now().strftime("%H:%M:%S")
+            self.output_text.insert(tk.INSERT, f'[{now}] {text} \n')
+            self.output_text.see(tk.END)
+            self.output_text.update()
+        else:
+            self.status["text"] = text
+            self.status.update()
 
 
 if __name__ == '__main__':
