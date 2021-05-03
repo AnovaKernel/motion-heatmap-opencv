@@ -14,7 +14,7 @@ class Application(tk.Frame):
         super().__init__(master)
         self.master = master
 
-        self.buttons = [OPEN_FILE, CREATE_HEATMAP, EXIT]
+        self.buttons = [OPEN_FILE, SELECT_REF_FRAME, CREATE_HEATMAP, EXIT]
         self.entries = [HEAT_INTENSITY, FRAME_SKIP, MAX_FRAMES]
 
         self.label = {}
@@ -32,7 +32,7 @@ class Application(tk.Frame):
             b = tk.Button(master=row, text=button, command=self.get_command(button), width=20)
             b.pack(side=tk.LEFT)
             lb = tk.Label(master=row)
-            lb.pack()
+            lb.pack(anchor="w")
             self.label[button] = lb
             row.grid(row=i, column=0, sticky='ew')
 
@@ -40,7 +40,7 @@ class Application(tk.Frame):
         frame.grid(row=2, column=0, columnspan=2, sticky='n')
         self.status = tk.Label(master=frame, text=f"...")
         self.status.pack(side=tk.TOP, )
-        self.output_text = ScrolledText(master=frame, height=5, wrap=tk.WORD)
+        self.output_text = ScrolledText(master=frame, height=7, wrap=tk.WORD)
         self.output_text.pack(side=tk.BOTTOM)
 
         frame = tk.Frame(self, relief=tk.RAISED, borderwidth=1)
@@ -61,6 +61,8 @@ class Application(tk.Frame):
             return self.master.destroy
         elif event == CREATE_HEATMAP:
             return self.generate_heatmap
+        elif event == SELECT_REF_FRAME:
+            return self.select_ref_frame
         else:
             return lambda: self.log(f"{event} not implemented")
 
@@ -83,10 +85,28 @@ class Application(tk.Frame):
             self.heatmap = HeatMapProcessor(input_file=path, entries=self.entry, logger=self.log)
             self.log(f'Loaded {name} ({self.heatmap.length} frames)')
 
-            self.heatmap.get_reference_frame()
+            self.heatmap.set_reference_frame()
             height, width, _ = self.heatmap.ref_frame.shape
             length = self.heatmap.length
             self.label[OPEN_FILE]['text'] = f"File: {name}, Frames: {length}, Dim: {width}x{height}"
+            self.label[SELECT_REF_FRAME]['text'] = ""
+        else:
+            self.log(f'No file selected')
+
+    def select_ref_frame(self):
+        if not self.heatmap:
+            self.log("Open file first")
+            return
+
+        file = tk.filedialog.askopenfile(mode="r")
+        if file:
+            path = file.name
+            name = Path(path).name
+
+            self.heatmap.set_reference_frame(file=path)
+            height, width, _ = self.heatmap.ref_frame.shape
+
+            self.label[SELECT_REF_FRAME]['text'] = f"File: {name}, Dim: {width}x{height}"
         else:
             self.log(f'No file selected')
 

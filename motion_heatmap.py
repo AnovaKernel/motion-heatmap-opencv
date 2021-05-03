@@ -32,10 +32,14 @@ class HeatMapProcessor(object):
         self.step_size = int(entries[FRAME_SKIP].get() or 0) + 1
         self.max_frames = int(entries[MAX_FRAMES].get() or 0)
 
-    def get_reference_frame(self):
-        # todo: allow to input a custom reference frame
-        _, frame = self.capture.read()
-        self.ref_frame = copy.deepcopy(frame)
+    def set_reference_frame(self, frame=None, file=None):
+        if frame:
+            self.ref_frame = copy.deepcopy(frame)
+        elif file:
+            _, self.ref_frame = copy.deepcopy(cv2.VideoCapture(file).read())
+        else:
+            _, self.ref_frame = copy.deepcopy(self.capture.read())
+
         self.accumulated_img = np.zeros(self.ref_frame.shape[:2], np.uint8)
         h, w, _ = self.ref_frame.shape
         self.logger(f'Reference Frame Loaded ({w}x{h})')
@@ -45,7 +49,7 @@ class HeatMapProcessor(object):
         start_ms = round(time.time() * 1000)
         start_dt = datetime.datetime.now()
 
-        threshold = 2
+        threshold = 200 # make customizable
         # handles color intensity
         max_value = self.max_value
         step_size = self.step_size
@@ -56,6 +60,9 @@ class HeatMapProcessor(object):
                     f'\tstep={step_size}\n'
                     f'\tmax_frames={self.max_frames}\n'
                     f'\tintensity={max_value}\n')
+
+        self.capture.set(cv2.CAP_PROP_POS_FRAMES, 0)
+
         for i in range(0, last_frame, step_size):
             # account for step_size by setting capture frame position
             if step_size > 1:
@@ -68,7 +75,7 @@ class HeatMapProcessor(object):
 
             frames_read += 1
             background_filter = self.background_subtractor.apply(frame)  # remove the background
-
+            # if a pixel value is greater then threshold, set it to max_value, otherwise 0
             ret, th1 = cv2.threshold(background_filter, threshold, max_value, cv2.THRESH_BINARY)
 
             # add to the accumulated image
@@ -76,7 +83,7 @@ class HeatMapProcessor(object):
 
             color_image = cv2.applyColorMap(self.accumulated_img, cv2.COLORMAP_HOT)
             # frame*alpha+color_image*beta+gamma
-            video_frame = cv2.addWeighted(frame, 0.7, color_image, 0.6, 0)
+            video_frame = cv2.addWeighted(frame, 0.7, color_image, 0.7, 0)
 
             self.frame_queue.put(video_frame)
 
@@ -98,27 +105,26 @@ class HeatMapProcessor(object):
         self.logger(logentry)
 
     def write_image(self):
-        color_image = cv2.applyColorMap(self.accumulated_img, cv2.COLORMAP_HOT)
+        color_image = cv2.applyColorMap(cv2.erode(self.accumulated_img, None, 2), cv2.COLORMAP_HOT)
         result_overlay = cv2.addWeighted(self.ref_frame, 0.7, color_image, 0.7, 0)
 
         ts = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
         output_file = f'output/{ts}.jpg'
 
         # save the final heatmap
-        cv2.imwrite(output_file, result_overlay)
+        cv2.imwrite(f"{output_file}.jpg", result_overlay)
+        # cv2.imwrite(f"{output_file}_erode.jpg", color_image)
+        # cv2.imwrite(f"{output_file}_acc.jpg", self.accumulated_img)
         self.logger(f'Saved: "{output_file}" ')
 
     def write_video(self):
         while True:
             try:
-                next = self.frame_queue.get_nowait() if self.read_input_done else self.frame_queue.get()
-                self.video_writer.write(next)  # self.frame_queue.task_done()
+                next = self.frame_queue.get(timeout=2)
+                self.video_writer.write(next)
+                self.frame_queue.task_done()
             except queue.Empty:
                 break
-
-    def queue_read(self):
-        self.iterate_frames()
-        pass
 
     def queue_write(self):
 
@@ -127,33 +133,38 @@ class HeatMapProcessor(object):
 
     def read_frames(self):
         self.read_input_done = False
-
-        with self.frame_queue.mutex:
-            self.frame_queue.queue.clear()
-
-        self.get_reference_frame()
-        self.iterate_frames()
-
+        try:
+            with self.frame_queue.mutex:
+                self.frame_queue.queue.clear()
+            self.iterate_frames()
+        except Exception as e:
+            self.logger(f"Failed:{repr(e)}")
         self.read_input_done = True
 
     def write_frames(self):
-        time.sleep(2)
-        starttime = datetime.datetime.now()
-        height, width, layers = self.ref_frame.shape
-        fourcc = cv2.VideoWriter_fourcc(*"MJPG")
-        ts = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
-        output_file = f'output/{ts}.avi'
-        fps = 30.0  # make customizable?
+        time.sleep(1)
+        try:
+            starttime = time.perf_counter()
+            height, width, layers = self.ref_frame.shape
+            fourcc = cv2.VideoWriter_fourcc(*"MP4V")
+            ts = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+            output_file = f'output/{ts}.mp4'
+            fps = 30.0  # make customizable?
 
-        if not os.path.isdir('output'):
-            os.mkdir('output')
+            if not os.path.isdir('output'):
+                os.mkdir('output')
 
-        self.video_writer = cv2.VideoWriter(output_file, fourcc, fps, (width, height))
+            self.video_writer = cv2.VideoWriter(output_file, fourcc, fps, (width, height))
 
-        self.queue_write()
+            self.queue_write()
 
-        cv2.destroyAllWindows()
-        self.video_writer.release()
-        tt = (datetime.datetime.now() - starttime)
-        self.logger(f'Saved: "{output_file}" \n'
-                    f'\tTime taken: {int(tt.total_seconds())} seconds')
+            tt = (time.perf_counter() - starttime)
+            self.logger(f'Saved: "{output_file}" \n'
+                        f'\tTime taken: {tt:.2f} seconds')
+        except Exception as e:
+            self.logger(f"Failed:{repr(e)}")
+        finally:
+            if self.video_writer:
+                self.video_writer.release()
+                self.video_writer = None
+            self.read_input_done = False

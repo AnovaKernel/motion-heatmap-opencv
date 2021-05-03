@@ -20,8 +20,3 @@ to make an executable you'd need pyinstaller
 # create exe
 `pyinstaller --onefile gui.spec`
 
-# todo list
-- customize max_value for color intensity
-- specify a custom reference image
-- error handling
-- threading
