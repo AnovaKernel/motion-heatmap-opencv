@@ -1,6 +1,7 @@
 import copy
 import datetime
 import os.path
+import queue
 import time
 
 import cv2
@@ -18,11 +19,12 @@ class HeatMapProcessor(object):
         self.background_subtractor = cv2.bgsegm.createBackgroundSubtractorMOG()
         self.length = int(self.capture.get(cv2.CAP_PROP_FRAME_COUNT))
         self.logger = logger
-
+        self.video_writer = None
         self.ref_frame = None
-        self.video_frames = None
+        self.frame_queue = queue.Queue()
         self.accumulated_img = None
         self.get_reference_frame()
+        self.read_input_done = False
 
         if entries is None:
             entries = {}
@@ -35,23 +37,22 @@ class HeatMapProcessor(object):
         _, frame = self.capture.read()
         self.ref_frame = copy.deepcopy(frame)
         self.accumulated_img = np.zeros(self.ref_frame.shape[:2], np.uint8)
+        h, w, _ = self.ref_frame.shape
+        self.logger(f'Reference Frame Loaded ({w}x{h})')
 
     def iterate_frames(self):
 
-        self.video_frames = []
-
-        if self.ref_frame is None:
-            self.get_reference_frame()
+        start_ms = round(time.time() * 1000)
+        start_dt = datetime.datetime.now()
 
         threshold = 2
         # handles color intensity
         max_value = self.max_value
         step_size = self.step_size
         last_frame = min(self.length - 1, self.max_frames * step_size)
-        start_ms = round(time.time() * 1000)
-        start_dt = datetime.datetime.now()
         frames_read = 0
-        self.logger(f'Reading every {step_size}(st/nd/rd/th) frame of {self.length} frames')
+
+        self.logger(f'Processing {int(last_frame / step_size)} frames')
         for i in range(0, last_frame, step_size):
             # account for step_size by setting capture frame position
             self.capture.set(cv2.CAP_PROP_POS_FRAMES, i)
@@ -71,30 +72,36 @@ class HeatMapProcessor(object):
             color_image_video = cv2.applyColorMap(self.accumulated_img, cv2.COLORMAP_HOT)
             video_frame = cv2.addWeighted(frame, 0.7, color_image_video, 0.7, 0)
 
-            self.video_frames.append(video_frame)
+            self.frame_queue.put(video_frame)
 
             if (i + step_size) % (step_size * 10) == 0:
                 avg_frame_time = ((round(time.time() * 1000) - start_ms) / frames_read)
-                to_go = last_frame - frames_read
+                to_go = int(last_frame / step_size) - frames_read
 
-                self.logger(
-                    f'[{i + 1}/{last_frame}] {round(i / last_frame * 100)}% done. '
-                    f'Average frame time: {int(avg_frame_time)} ms.',
-                    status_only=True)
+                self.logger(f'{round(i / last_frame * 100)}% done. '
+                            f'Remaining: {to_go}, '
+                            f'ms/frame: {int(avg_frame_time)}', status_only=True)
 
             if cv2.waitKey(1) & 0xFF == ord('q'):
                 break
 
-        self.logger(f'[{last_frame}/{last_frame}] 100% done. 0 seconds remaining', status_only=True)
         tt = (datetime.datetime.now() - start_dt)
-        self.logger(f'Done\n'
-                    f'Frames read: {frames_read}\n'
-                    f'Time Taken: {int(tt.total_seconds())} seconds')
+        logentry = f'Done. {frames_read} frames read in {int(tt.total_seconds())} seconds'
+        self.logger(logentry, status_only=True)
+        self.logger(logentry)
 
-    def make_image(self):
-        if not self.video_frames:
-            self.iterate_frames()
+    # def write_heatmap(self):
+    #     # if not self.frame_queue:
+    #     #     self.iterate_frames()
+    #     if not os.path.isdir('output'):
+    #         os.mkdir('output')
+    #
+    #     starttime = datetime.datetime.now()
+    #     self.write_image()
+    #
+    #     pass
 
+    def write_image(self):
         color_image = cv2.applyColorMap(self.accumulated_img, cv2.COLORMAP_HOT)
         result_overlay = cv2.addWeighted(self.ref_frame, 0.7, color_image, 0.7, 0)
 
@@ -103,30 +110,80 @@ class HeatMapProcessor(object):
 
         # save the final heatmap
         cv2.imwrite(output_file, result_overlay)
-        self.logger(f'"{output_file}" saved')
+        self.logger(f'Saved: "{output_file}" ')
 
-    def make_video(self):
+    def write_video(self):
+        while True:
+            try:
+                next = self.frame_queue.get_nowait() if self.read_input_done else self.frame_queue.get()
+                self.video_writer.write(next)
+                self.frame_queue.task_done()
+            except queue.Empty:
+                break
 
-        if not self.video_frames:
-            self.iterate_frames()
-        if not os.path.isdir('output'):
-            os.mkdir('output')
+    # def make_video(self):
+    #
+    #     if not self.frame_queue:
+    #         self.iterate_frames()
+    #     if not os.path.isdir('output'):
+    #         os.mkdir('output')
+    #
+    #     starttime = datetime.datetime.now()
+    #
+    #     # images = self.frame_queue
+    #
+    #     height, width, layers = self.ref_frame.shape
+    #     fourcc = cv2.VideoWriter_fourcc(*"MJPG")
+    #     ts = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+    #     output_file = f'output/{ts}.avi'
+    #     self.video_writer = cv2.VideoWriter(output_file, fourcc, 30.0, (width, height))
+    #
+    #     self.logger(f'Writing {output_file}')
+    #     # for image in images:
+    #     #     video.write(image)
+    #     cv2.destroyAllWindows()
+    #     self.video_writer.release()
+    #     tt = (datetime.datetime.now() - starttime)
+    #     self.logger(f'"{output_file}" saved\n'
+    #                 f'\tTime taken: {int(tt.total_seconds())} seconds')
 
+    def queue_read(self):
+        self.iterate_frames()
+        pass
+
+    def queue_write(self):
+
+        self.write_video()
+        self.write_image()
+
+    def read_frames(self):
+        self.read_input_done = False
+
+        with self.frame_queue.mutex:
+            self.frame_queue.queue.clear()
+
+        self.get_reference_frame()
+        self.iterate_frames()
+
+        self.read_input_done = True
+
+    def write_frames(self):
         starttime = datetime.datetime.now()
-
-        images = self.video_frames
-
         height, width, layers = self.ref_frame.shape
         fourcc = cv2.VideoWriter_fourcc(*"MJPG")
         ts = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
         output_file = f'output/{ts}.avi'
-        video = cv2.VideoWriter(output_file, fourcc, 30.0, (width, height))
+        fps = 30.0  # make customizable?
 
-        self.logger(f'Writing {output_file}')
-        for image in images:
-            video.write(image)
+        if not os.path.isdir('output'):
+            os.mkdir('output')
+
+        self.video_writer = cv2.VideoWriter(output_file, fourcc, fps, (width, height))
+
+        self.queue_write()
+
         cv2.destroyAllWindows()
-        video.release()
+        self.video_writer.release()
         tt = (datetime.datetime.now() - starttime)
         self.logger(f'"{output_file}" saved\n'
                     f'\tTime taken: {int(tt.total_seconds())} seconds')

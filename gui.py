@@ -1,3 +1,5 @@
+import threading
+import time
 import tkinter as tk
 import tkinter.filedialog
 from datetime import datetime
@@ -13,7 +15,7 @@ class Application(tk.Frame):
         super().__init__(master)
         self.master = master
 
-        self.buttons = [OPEN_FILE, RENDER_FILE, CREATE_IMG, CREATE_VID, EXIT]
+        self.buttons = [OPEN_FILE, CREATE_HEATMAP, EXIT]
         self.entries = [HEAT_INTENSITY, FRAME_SKIP, MAX_FRAMES]
 
         self.label = {}
@@ -58,29 +60,29 @@ class Application(tk.Frame):
             return self.select_file
         elif event == EXIT:
             return self.master.destroy
-        elif event == CREATE_IMG:
-            return self.generate_map_image
-        elif event == CREATE_VID:
-            return self.generate_map_video
-        elif event == RENDER_FILE:
-            return self.render_file
+        elif event == CREATE_HEATMAP:
+            return self.generate_heatmap
         else:
             return lambda: self.log(f"{event} not implemented")
 
-    def generate_map_image(self):
-        if self.heatmap:
-            # todo: threading.Thread(target=self.heatmap.make_image)
-            self.heatmap.make_image()
-            self.log('img generation done')
-        else:
-            self.log("Can't generate, no input file loaded.")
+    # def generate_map_image(self):
+    #     if self.heatmap:
+    #         # todo: threading.Thread(target=self.heatmap.make_image)
+    #         self.heatmap.write_image()
+    #         self.log('img generation done')
+    #     else:
+    #         self.log("Can't generate, no input file loaded.")
 
-    def generate_map_video(self):
+    def generate_heatmap(self):
         if self.heatmap:
-            self.log('starting vid generation')
-            # todo: threading.Thread(target=self.heatmap.make_video)
-            self.heatmap.make_video()
-            self.log('vid generation done')
+            self.parse_entries()
+
+            threading.Thread(target=self.heatmap.read_frames, daemon=True).start()
+
+            time.sleep(2)
+
+            threading.Thread(target=self.heatmap.write_frames, daemon=True).start()
+
         else:
             self.log("Can't generate, no input file loaded.")
 
@@ -97,9 +99,8 @@ class Application(tk.Frame):
         else:
             self.log(f'No file selected')
 
-    def render_file(self):
+    def parse_entries(self):
         if self.heatmap:
-            ''.isnumeric()
             max_val = self.entry[HEAT_INTENSITY].get()
             if max_val.isnumeric():
                 self.heatmap.max_value = int(max_val)
@@ -109,10 +110,6 @@ class Application(tk.Frame):
             max_frames = self.entry[MAX_FRAMES].get()
             if max_frames.isnumeric():
                 self.heatmap.max_frames = int(max_frames)
-
-            self.heatmap.iterate_frames()
-        else:
-            self.log('No file selected.')
 
     def log(self, text, status_only=False):
         if not status_only:
