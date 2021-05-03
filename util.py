@@ -4,6 +4,6 @@ EXIT = "Exit"
 OPEN_FILE = "Open File"
 
 # Entries
-HEAT_INTENSITY = "Max Heat"
+HEAT_INTENSITY = "Heat Intensity"
 FRAME_SKIP = "Frameskip"
 MAX_FRAMES = "Max Frames"

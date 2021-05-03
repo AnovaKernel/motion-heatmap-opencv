@@ -1,5 +1,4 @@
 import threading
-import time
 import tkinter as tk
 import tkinter.filedialog
 from datetime import datetime
@@ -65,21 +64,11 @@ class Application(tk.Frame):
         else:
             return lambda: self.log(f"{event} not implemented")
 
-    # def generate_map_image(self):
-    #     if self.heatmap:
-    #         # todo: threading.Thread(target=self.heatmap.make_image)
-    #         self.heatmap.write_image()
-    #         self.log('img generation done')
-    #     else:
-    #         self.log("Can't generate, no input file loaded.")
-
     def generate_heatmap(self):
         if self.heatmap:
             self.parse_entries()
 
             threading.Thread(target=self.heatmap.read_frames, daemon=True).start()
-
-            time.sleep(2)
 
             threading.Thread(target=self.heatmap.write_frames, daemon=True).start()
 
@@ -92,10 +81,12 @@ class Application(tk.Frame):
             path = file.name
             name = Path(path).name
             self.heatmap = HeatMapProcessor(input_file=path, entries=self.entry, logger=self.log)
+            self.log(f'Loaded {name} ({self.heatmap.length} frames)')
+
+            self.heatmap.get_reference_frame()
             height, width, _ = self.heatmap.ref_frame.shape
             length = self.heatmap.length
             self.label[OPEN_FILE]['text'] = f"File: {name}, Frames: {length}, Dim: {width}x{height}"
-            self.log(f'Loaded {name} ({self.heatmap.length} frames)')
         else:
             self.log(f'No file selected')
 
