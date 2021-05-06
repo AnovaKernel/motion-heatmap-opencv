@@ -4,8 +4,8 @@
 block_cipher = None
 
 
-a = Analysis(['gui.py'],
-             pathex=['C:\\Users\\K\\Documents\\IDE_Projects\\MotionHeatmapVideo'],
+a = Analysis(['main.py'],
+             pathex=['.\\MotionHeatmapVideo'],
              binaries=[],
              datas=[],
              hiddenimports=[],

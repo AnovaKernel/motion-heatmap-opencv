@@ -7,7 +7,7 @@ import time
 import cv2
 import numpy as np
 
-from util import *
+from gui import Buttons as C
 
 
 class HeatMapProcessor(object):
@@ -28,9 +28,9 @@ class HeatMapProcessor(object):
 
         if entries is None:
             entries = {}
-        self.max_value = int(entries[HEAT_INTENSITY].get() or 3)
-        self.step_size = int(entries[FRAME_SKIP].get() or 0) + 1
-        self.max_frames = int(entries[MAX_FRAMES].get() or 0)
+        self.max_value = int(entries[C.HEAT_INTENSITY].get() or 3)
+        self.step_size = int(entries[C.FRAME_SKIP].get() or 0) + 1
+        self.max_frames = int(entries[C.MAX_FRAMES].get() or 0)
 
     def set_reference_frame(self, frame=None, file=None):
         if frame:
