@@ -20,7 +20,7 @@ When your file is loaded, there's some settings you can adjust.
 When you click 'Generate heatmap', it will generate 3 files:
 1. A movie file in which you'll see the magic happen in real-time. Wow, such beautiful! This file can become quite big; about 1 gig per minute when the sourcematerial is HD.
 2. A picture of the end result; the heatmap.
-3. A picture of the end result without the reference frame.
+3. A picture of the end result without the reference frame. [NOT YET AVAILABLE]
 
 So what are you waiting for? Go on and try it!
 
