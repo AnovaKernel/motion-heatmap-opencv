@@ -1,4 +1,4 @@
-Welcome to this heatmap generator!
+# Welcome to this heatmap generator!
 
 First, select your sourcematerial (video). Bear in mind that the result will be the best when the source is of good quality. Yes, GIGO. Above all the sourcematerial should be filmed from a stable position, e.g. from a tripod. A moving camera, even with some slight vibrations, will result in lots of noise.
 
@@ -25,6 +25,6 @@ When you click 'Generate heatmap', it will generate 3 files:
 So what are you waiting for? Go on and try it!
 
 # Credits
-This heatmap generator is forked from robertosannazzaro/motion-heatmap-opencv. His code is an adaptation of the [Intel Motion Heatmap](https://github.com/intel-iot-devkit/python-cv-samples/tree/master/examples/motion-heatmap)
+This heatmap generator is forked from [robertosannazzaro's motion-heatmap-opencv](https://github.com/robertosannazzaro/motion-heatmap-opencv). His code is an adaptation of the [Intel Motion Heatmap](https://github.com/intel-iot-devkit/python-cv-samples/tree/master/examples/motion-heatmap)
 
 ![](./heatmap_gif.gif)
