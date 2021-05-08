@@ -7,12 +7,12 @@ import time
 import cv2
 import numpy as np
 
-from gui import Buttons as C
+from gui import Inputs
 
 
 class HeatMapProcessor(object):
 
-    def __init__(self, input_file, entries=None, logger=None) -> None:
+    def __init__(self, input_file, logger=None, settings=None) -> None:
         super().__init__()
 
         self.capture = cv2.VideoCapture(input_file)
@@ -25,12 +25,7 @@ class HeatMapProcessor(object):
         self.accumulated_img = None
         # self.get_reference_frame()
         self.read_input_done = False
-
-        if entries is None:
-            entries = {}
-        self.max_value = int(entries[C.HEAT_INTENSITY].get() or 3)
-        self.step_size = int(entries[C.FRAME_SKIP].get() or 0) + 1
-        self.max_frames = int(entries[C.MAX_FRAMES].get() or 0)
+        self.update_settings(settings)
 
     def set_reference_frame(self, frame=None, file=None):
         if frame:
@@ -49,7 +44,7 @@ class HeatMapProcessor(object):
         start_ms = round(time.time() * 1000)
         start_dt = datetime.datetime.now()
 
-        threshold = 200 # make customizable
+        threshold = self.threshold
         # handles color intensity
         max_value = self.max_value
         step_size = self.step_size
@@ -75,13 +70,16 @@ class HeatMapProcessor(object):
 
             frames_read += 1
             background_filter = self.background_subtractor.apply(frame)  # remove the background
+
             # if a pixel value is greater then threshold, set it to max_value, otherwise 0
             ret, th1 = cv2.threshold(background_filter, threshold, max_value, cv2.THRESH_BINARY)
 
             # add to the accumulated image
             self.accumulated_img = cv2.add(self.accumulated_img, th1)
 
-            color_image = cv2.applyColorMap(self.accumulated_img, cv2.COLORMAP_HOT)
+            # apply colormap to grayscale values
+            color_image = cv2.applyColorMap(self.accumulated_img, self.color_map)
+
             # frame*alpha+color_image*beta+gamma
             video_frame = cv2.addWeighted(frame, 0.7, color_image, 0.7, 0)
 
@@ -120,9 +118,8 @@ class HeatMapProcessor(object):
     def write_video(self):
         while True:
             try:
-                next = self.frame_queue.get(timeout=2)
+                next = self.frame_queue.get_nowait() if self.read_input_done else self.frame_queue.get(timeout=2)
                 self.video_writer.write(next)
-                self.frame_queue.task_done()
             except queue.Empty:
                 break
 
@@ -149,7 +146,7 @@ class HeatMapProcessor(object):
             fourcc = cv2.VideoWriter_fourcc(*"MP4V")
             ts = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
             output_file = f'output/{ts}.mp4'
-            fps = 30.0  # make customizable?
+            fps = self.output_fps  # make customizable?
 
             if not os.path.isdir('output'):
                 os.mkdir('output')
@@ -168,3 +165,11 @@ class HeatMapProcessor(object):
                 self.video_writer.release()
                 self.video_writer = None
             self.read_input_done = False
+
+    def update_settings(self, settings):
+        self.max_value = int(settings[Inputs.HEAT_INTENSITY] or 2)
+        self.step_size = int(settings[Inputs.FRAME_SKIP] or 0) + 1
+        self.max_frames = int(settings[Inputs.MAX_FRAMES] or 0)
+        self.threshold = int(settings[Inputs.THRESHOLD] or 1)
+        self.output_fps = int(settings[Inputs.OUTPUT_FPS] or 30)
+        self.color_map = cv2.COLORMAP_HOT

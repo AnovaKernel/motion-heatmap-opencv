@@ -4,6 +4,7 @@ import tkinter.filedialog
 from datetime import datetime
 from enum import Enum
 from pathlib import Path
+from tkinter.scrolledtext import ScrolledText
 
 
 class Application(tk.Frame):
@@ -18,43 +19,63 @@ class Application(tk.Frame):
             Flavour: (1, 0),
             Output : (2, 0),
             }
-
+        self.output = None
         self.label = {}
         self.entry = {}
         self.heatmap = None
         self.create_widgets()
-        self.pack()
+        self.pack(fill=tk.BOTH, expand=True)
+        self.rowconfigure(0, weight=1)
+        self.columnconfigure(0, weight=1)
 
     def create_widgets(self):
-
         for group, (x, y) in (self.grid.items()):
-            f = tk.Frame(self, relief=tk.RAISED, borderwidth=1)
-
-            f.grid(row=x, column=y, sticky='nwes')
-            for i, wtype in enumerate(group):
-                _line = tk.Frame(master=f)
-                _w, _l = self._create_widget(wtype, master=_line)
-                _w.pack(side=tk.LEFT)
-                _l.pack(anchor="w")
-
+            _f = tk.Frame(self, relief=tk.RAISED, borderwidth=1)
+            span = 3 if x > 0 else 1
+            _f.grid(row=x, column=y, sticky='nwes', columnspan=span)
+            for i, widget_type in enumerate(group):
+                _line = tk.Frame(master=_f)
+                self._add_widgets_to_row(widget_type, master=_line)
                 _line.grid(row=i, column=0, sticky='nsew')
-                print(wtype)
 
-        # frame = tk.Frame(self, relief=tk.RAISED, borderwidth=1)  # frame.grid(row=0, column=0, sticky='nwes')
+    def _add_widgets_to_row(self, type, master=None, ):
 
-        # for i, button in enumerate(Buttons):  #     row = tk.Frame(master=frame)  #     b = tk.Button(master=row, text=button.value, command=self.get_command(button), width=20)  #  #     b.pack(side=tk.LEFT)  #     lb = tk.Label(master=row)  #     lb.pack(anchor="w")
-
-        #     row.grid(row=i, column=0, sticky='ew')
-
-        #  # frame = tk.Frame(self, relief=tk.RAISED, borderwidth=1)  # frame.grid(row=2, column=0, columnspan=2, sticky='n')  # self.status = tk.Label(master=frame, text=f"...")  # self.status.pack(side=tk.TOP, )  # self.output_text = ScrolledText(master=frame, height=7, wrap=tk.WORD)  # self.output_text.pack(side=tk.BOTTOM)  # self.bell()  #  # frame = tk.Frame(self, relief=tk.RAISED, borderwidth=1)  # frame.grid(row=0, column=1, sticky='nwes')  # for i, entry in enumerate(Inputs):  #     row = tk.Frame(master=frame)  #     lb = tk.Label(master=row, text=entry.value, width=15, )  #     lb.pack(side=tk.LEFT, anchor="w")  #     vcmd = self.register(is_digit), '%S'  #     e = tk.Entry(master=row, width=20, validate="key", validatecommand=vcmd)  #     e.pack()  #  #     self.entry[entry] = e  #     row.grid(row=i, column=0, sticky='ew')  #
-
-    def _create_widget(self, type, master=None, ):
-        label = tk.Label(master)
         if isinstance(type, Buttons):
-            widget = tk.Button(master=master, text=type.value, command=self.get_command(type), width=20)
+            tk.Button(
+                master=master,
+                text=type.value,
+                command=self.get_command(type),
+                width=20
+                ).pack(side=tk.LEFT)
+            _label = tk.Label(master)
+            _label.pack(anchor="w")
+
+            # Register this label so we can access it to display info
+            self.label[type] = _label
+
         elif isinstance(type, Inputs):
-            widget = tk.Entry(master)
-        return widget, label
+            tk.Label(master, text=type.value).pack(anchor="e", side=tk.LEFT)
+            _widget = tk.Entry(master=master, validate="key", validatecommand=(self.register(is_digit), '%S'), width=10)
+            _widget.pack(side=tk.RIGHT)
+
+            # Register this entry so we can read it's value later
+            self.entry[type] = _widget
+
+        elif isinstance(type, Output):
+            self.output = ScrolledText(master=master, height=8, wrap=tk.WORD)
+            self.output.pack(side=tk.BOTTOM,fill=tk.BOTH, expand=True)
+
+        elif isinstance(type, Flavour):
+            _label = tk.Label(master=master, text=type.value)
+            _label.pack(side=tk.TOP, anchor='w')
+            self.label[type] = _label
+
+        elif isinstance(type, Preview):
+            # todo:
+            tk.Canvas(master=master, bg='black').pack()
+
+        else:
+            print(f"{type} not implemented")
 
     def get_command(self, event):
         if event == Buttons.OPEN_FILE:
@@ -66,18 +87,19 @@ class Application(tk.Frame):
         elif event == Buttons.SELECT_REF_FRAME:
             return self.select_ref_frame
         else:
-            return lambda: self.log(f"{event} not implemented")
+            return lambda: self.add_output(f"{event} not implemented")
 
     def generate_heatmap(self):
         if self.heatmap:
-            self.parse_entries()
+            self.heatmap.update_settings(self.get_settings())
+            # self.parse_entries()
 
-            threading.Thread(target=self.heatmap.read_frames, daemon=True).start()
+            threading.Thread(target=self.heatmap.read_frames).start()
 
-            threading.Thread(target=self.heatmap.write_frames, daemon=True).start()
+            threading.Thread(target=self.heatmap.write_frames).start()
 
         else:
-            self.log("Can't generate, no input file loaded.")
+            self.add_output("Can't generate, no input file loaded.")
 
     def select_file(self):
         file = tk.filedialog.askopenfile(mode="r")
@@ -85,7 +107,7 @@ class Application(tk.Frame):
             path = file.name
             name = Path(path).name
             self.init_heatmap(path)
-            self.log(f'Loaded {name} ({self.heatmap.length} frames)')
+            self.add_output(f'Loaded {name} ({self.heatmap.length} frames)')
 
             self.heatmap.set_reference_frame()
             height, width, _ = self.heatmap.ref_frame.shape
@@ -93,11 +115,11 @@ class Application(tk.Frame):
             self.label[Buttons.OPEN_FILE]['text'] = f"File: {name}, Frames: {length}, Dim: {width}x{height}"
             self.label[Buttons.SELECT_REF_FRAME]['text'] = ""
         else:
-            self.log(f'No file selected')
+            self.add_output(f'No file selected')
 
     def select_ref_frame(self):
         if not self.heatmap:
-            self.log("Open file first")
+            self.add_output("Open file first")
             return
 
         file = tk.filedialog.askopenfile(mode="r")
@@ -110,33 +132,35 @@ class Application(tk.Frame):
 
             self.label[Buttons.SELECT_REF_FRAME]['text'] = f"File: {name}, Dim: {width}x{height}"
         else:
-            self.log(f'No file selected')
-
-    def parse_entries(self):
-        if self.heatmap:
-            max_val = self.entry[Buttons.HEAT_INTENSITY].get()
-            if max_val.isnumeric():
-                self.heatmap.max_value = int(max_val)
-            step_size = self.entry[Buttons.FRAME_SKIP].get()
-            if step_size.isnumeric():
-                self.heatmap.step_size = int(step_size) + 1
-            max_frames = self.entry[Buttons.MAX_FRAMES].get()
-            if max_frames.isnumeric():
-                self.heatmap.max_frames = int(max_frames)
+            self.add_output(f'No file selected')
 
     def log(self, text, status_only=False):
         if not status_only:
-            now = datetime.now().strftime("%H:%M:%S")
-            self.output_text.insert(tk.INSERT, f'[{now}] {text} \n')
-            self.output_text.see(tk.END)
-            self.output_text.update()
+            self.add_output(text)
         else:
-            self.status["text"] = text
-            self.status.update()
+            self.set_flavour(text)
+
+    def set_flavour(self, text):
+        _label = self.label[Flavour.FLAVOUR_TEXT]
+        if _label:
+            _label["text"] = text
+            _label.update()
+
+    def add_output(self, text):
+        now = datetime.now().strftime("%H:%M:%S")
+        self.output.insert(tk.INSERT, f'[{now}] {text} \n')
+        self.output.see(tk.END)
+        self.output.update()
 
     def init_heatmap(self, path):
         from motion_heatmap import HeatMapProcessor
-        self.heatmap = HeatMapProcessor(input_file=path, entries=self.entry, logger=self.log)
+        self.heatmap = HeatMapProcessor(input_file=path, logger=self.log, settings=self.get_settings())
+
+    def get_settings(self):
+        settings = {}
+        for i in Inputs:
+            settings[i] = self.entry[i].get()
+        return settings
 
 
 class Buttons(Enum):
@@ -156,18 +180,18 @@ class Inputs(Enum):
 
 
 class Preview(Enum):
-    pass
+    PREVIEW = "Preview"
 
 
 class Output(Enum):
-    pass
+    OUTPUT_LOG = "Output Log"
 
 
 class Flavour(Enum):
-    pass
+    FLAVOUR_TEXT = "..."
 
 
-def is_digit(s: str):
+def is_digit(s: str) -> bool:
     return s.isdigit()
 
 
