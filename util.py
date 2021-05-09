@@ -10,11 +10,14 @@ class Buttons(Enum):
 
 
 class Inputs(Enum):
-    HEAT_INTENSITY = "Heat Intensity"
-    THRESHOLD = "Threshold"
-    FRAME_SKIP = "Frameskip"
-    MAX_FRAMES = "Max Frames"
-    OUTPUT_FPS = "Output FPS"
+    HEAT_INTENSITY = "Change Intensity (Default: 2)"
+    VARIANCE_THRESHOLD = "Variance Sensitivity (Default: 50)"
+    FRAME_SKIP = "Frameskip (Default: 0)"
+    MAX_FRAMES = "Stop After Frames (Default: 0)"
+    OUTPUT_FPS = "Output FPS (Default: 30)"
+    HIST_FRAMES = "Background History Frames (Default: 100)"
+    DETECT_SHADOWS = "Detect Shadows (Default: 0)"
+    ERODE_ITERATIONS = "Erosion Iterations (Default: 0)"
 
 
 class Preview(Enum):

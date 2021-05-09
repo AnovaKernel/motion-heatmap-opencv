@@ -121,4 +121,13 @@ class PreviewFrame(LayoutFrame):
         super().__init__(2, 0, 1, **kwargs)
 
     def add_widgets(self, master):
-        tk.Canvas(master=master, bg='black').pack()
+        self.canvas = tk.Canvas(master=master, bg='black')
+        self.canvas.pack()
+
+    def set_image(self):
+        pass
+        # todo: implement preview
+        # img_arr = copy.deepcopy(HeatMapProcessor.get_instance().accumulated_img)
+        # image = ImageTk.PhotoImage(image=Image.fromarray(HeatMapProcessor.get_instance().accumulated_img))
+        # self.canvas.create_image(0, 0, image=image, anchor=tk.NW)
+        # self.canvas.update()

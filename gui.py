@@ -1,12 +1,9 @@
-import threading
 import tkinter as tk
-import tkinter.filedialog
 from datetime import datetime
-from pathlib import Path
 
 from frames import ButtonFrame, MessageFrame, PreviewFrame, SettingFrame
 from heatmap_generator import HeatMapProcessor
-from util import Buttons, Inputs
+from util import Inputs
 
 
 class Application(tk.Frame):
@@ -26,15 +23,11 @@ class Application(tk.Frame):
 
         self._hmp = HeatMapProcessor.get_instance()
         self._hmp.set_output_logger(self.add_output, self.set_flavour)
+        self._hmp.preview = self.top_right.set_image
 
         self.rowconfigure(0, weight=1)
         self.columnconfigure(0, weight=1)
         self.pack(fill=tk.BOTH, expand=True)
-
-
-
-
-
 
     def set_flavour(self, text):
         _label = self.bottom.flavour
@@ -47,7 +40,6 @@ class Application(tk.Frame):
         _output.insert(tk.INSERT, f'[{now}] {text} \n')
         _output.see(tk.END)
         _output.update()
-
 
     def get_settings(self):
         settings = {}
