@@ -2,30 +2,48 @@ import copy
 import datetime
 import os.path
 import queue
+import threading
 import time
 
 import cv2
 import numpy as np
 
-from gui import Inputs
+from util import Inputs
 
 
 class HeatMapProcessor(object):
+    _instance = None
 
-    def __init__(self, input_file, logger=None, settings=None) -> None:
+    @classmethod
+    def get_instance(cls):
+        if not cls._instance:
+            cls._instance = HeatMapProcessor()
+        return cls._instance
+
+    def __init__(self, settings=None) -> None:
         super().__init__()
 
-        self.capture = cv2.VideoCapture(input_file)
         self.background_subtractor = cv2.bgsegm.createBackgroundSubtractorMOG()
-        self.length = int(self.capture.get(cv2.CAP_PROP_FRAME_COUNT))
-        self.logger = logger
+
+        self.capture = None
+        self.input_frame_count = None
+
+        self.logger = lambda s: print(s)
         self.video_writer = None
         self.ref_frame = None
         self.frame_queue = queue.Queue()
         self.accumulated_img = None
         # self.get_reference_frame()
         self.read_input_done = False
-        self.update_settings(settings)
+        self.settings = settings
+
+    def set_input_file(self, input_file):
+        self.capture = cv2.VideoCapture(input_file)
+        self.input_frame_count = int(self.capture.get(cv2.CAP_PROP_FRAME_COUNT))
+
+    def set_output_logger(self, log_method, flavour_text):
+        self.logger = log_method
+        self.set_flavour = flavour_text
 
     def set_reference_frame(self, frame=None, file=None):
         if frame:
@@ -38,17 +56,22 @@ class HeatMapProcessor(object):
         self.accumulated_img = np.zeros(self.ref_frame.shape[:2], np.uint8)
         h, w, _ = self.ref_frame.shape
         self.logger(f'Reference Frame Loaded ({w}x{h})')
+        return h, w
 
     def iterate_frames(self):
 
         start_ms = round(time.time() * 1000)
         start_dt = datetime.datetime.now()
 
+        if self.ref_frame is None:
+            self.set_reference_frame()
+
         threshold = self.threshold
         # handles color intensity
         max_value = self.max_value
         step_size = self.step_size
-        last_frame = min(self.length - 1, self.max_frames * step_size) if self.max_frames > 0 else self.length - 1
+        last_frame = min(self.input_frame_count - 1,
+                         self.max_frames * step_size) if self.max_frames > 0 else self.input_frame_count - 1
         frames_read = 0
 
         self.logger(f'Processing {int(last_frame / step_size)} frames\n'
@@ -89,17 +112,17 @@ class HeatMapProcessor(object):
                 avg_frame_time = ((round(time.time() * 1000) - start_ms) / frames_read)
                 to_go = int(last_frame / step_size) - frames_read
 
-                self.logger(f'[{round(i / last_frame * 100)}%] '
-                            f'[{to_go} remaining] '
-                            f'[{int(avg_frame_time)} ms/frame] '
-                            f'ETA: [{round(to_go * avg_frame_time / 1000)} sec.]', status_only=True)
+                self.set_flavour(f'[{round(i / last_frame * 100)}%] '
+                                 f'[{to_go} remaining] '
+                                 f'[{int(avg_frame_time)} ms/frame] '
+                                 f'ETA: [{round(to_go * avg_frame_time / 1000)} sec.]')
 
             if cv2.waitKey(1) & 0xFF == ord('q'):
                 break
 
         tt = (datetime.datetime.now() - start_dt)
         logentry = f'Done. {frames_read} frames read in {int(tt.total_seconds())} seconds'
-        self.logger(logentry, status_only=True)
+        self.set_flavour(logentry)
         self.logger(logentry)
 
     def write_image(self):
@@ -166,10 +189,29 @@ class HeatMapProcessor(object):
                 self.video_writer = None
             self.read_input_done = False
 
-    def update_settings(self, settings):
+    def update_settings(self, settings=None):
+        if settings is None:
+            settings = {}
+
         self.max_value = int(settings[Inputs.HEAT_INTENSITY] or 2)
         self.step_size = int(settings[Inputs.FRAME_SKIP] or 0) + 1
         self.max_frames = int(settings[Inputs.MAX_FRAMES] or 0)
         self.threshold = int(settings[Inputs.THRESHOLD] or 1)
         self.output_fps = int(settings[Inputs.OUTPUT_FPS] or 30)
         self.color_map = cv2.COLORMAP_HOT
+
+
+def load_file(path):
+    hmp = HeatMapProcessor.get_instance()
+    hmp.set_input_file(path)
+
+
+def generate_heatmap(settings):
+    hmp = HeatMapProcessor.get_instance()
+    hmp.update_settings(settings)
+    threading.Thread(target=hmp.read_frames).start()
+    threading.Thread(target=hmp.write_frames).start()
+
+
+def set_reference_frame(**kwargs):
+    return HeatMapProcessor.get_instance().set_reference_frame(**kwargs)
